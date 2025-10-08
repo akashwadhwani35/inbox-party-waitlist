@@ -11,7 +11,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.0"
       - key: DATABASE_URL
-        value: postgresql://postgres.zpoctgwpvuyftqhqitpx:Playstation4%40@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+        value: postgresql://postgres:Playstation4%40@aws-0-us-east-1.pooler.supabase.com:6543/postgres?options=project%3Dzpoctgwpvuyftqhqitpx
 
   - type: web
     name: inbox-party-site
