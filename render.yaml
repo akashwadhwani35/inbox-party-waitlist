@@ -12,7 +12,7 @@ services:
         value: "3.11"
 
   - type: web
-    name: inbox-party-frontend
+    name: inbox-party-site
     runtime: static
     buildCommand: ""
     staticPublishPath: frontend
