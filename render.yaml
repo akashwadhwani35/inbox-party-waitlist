@@ -20,7 +20,7 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://inbox-party-api.onrender.com/api/*
+        destination: https://inbox-party-api-4swk.onrender.com/api/*
     headers:
       - path: /*
         name: Cache-Control
