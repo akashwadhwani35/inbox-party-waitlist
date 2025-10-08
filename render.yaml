@@ -1,23 +1,23 @@
 services:
   - type: web
     name: inbox-party-api
-    env: python
+    runtime: python
     plan: free
     region: oregon
     autoDeploy: true
+    buildCommand: pip install -r requirements.txt
     startCommand: python backend/server.py
-    buildCommand: ""
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: "3.11"
 
-staticSites:
-  - name: inbox-party-frontend
-    publishPath: frontend
+  - type: static_site
+    name: inbox-party-frontend
+    runtime: static
     buildCommand: ""
+    staticPublishPath: frontend
     autoDeploy: true
     routes:
-      # Update the destination host if you rename the API service.
       - type: rewrite
         source: /api/*
         destination: https://inbox-party-api.onrender.com/api/*
