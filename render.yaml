@@ -11,7 +11,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.11"
 
-  - type: static_site
+  - type: web
     name: inbox-party-frontend
     runtime: static
     buildCommand: ""
