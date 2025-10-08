@@ -105,12 +105,14 @@ def waitlist_entries(limit: Optional[int] = None) -> List[Dict[str, Any]]:
 def insert_waitlist_record(payload: Dict[str, Any]) -> None:
     if DATABASE_URL and HAS_POSTGRES:
         cursor = DB_CONN.cursor()
-        cursor.execute(
-            "INSERT INTO waitlist (name, email) VALUES (%s, %s)",
-            (payload["name"], payload["email"]),
-        )
-        DB_CONN.commit()
-        cursor.close()
+        try:
+            cursor.execute(
+                "INSERT INTO waitlist (name, email) VALUES (%s, %s)",
+                (payload["name"], payload["email"]),
+            )
+            DB_CONN.commit()
+        finally:
+            cursor.close()
     else:
         with DB_CONN:
             DB_CONN.execute(
@@ -230,6 +232,10 @@ class WaitlistHandler(BaseHTTPRequestHandler):
         try:
             insert_waitlist_record({"name": name, "email": email})
         except Exception as e:
+            # Rollback transaction on error (PostgreSQL requires this)
+            if DATABASE_URL and HAS_POSTGRES:
+                DB_CONN.rollback()
+
             # Handle unique constraint violations for both SQLite and PostgreSQL
             error_msg = str(e).lower()
             if "unique" in error_msg or "duplicate" in error_msg:
