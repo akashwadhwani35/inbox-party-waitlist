@@ -23,8 +23,8 @@ Email prospecting tool with built-in lead enrichment and tracking. Join the wait
 
 - **Waitlist Signup**: Clean landing page with email capture
 - **Admin Dashboard**: View signups and export to CSV
-- **SQLite Storage**: Lightweight database with automatic schema creation
-- **No External Dependencies**: Backend uses only Python standard library
+- **Dual Database Support**: SQLite for local dev, PostgreSQL/Supabase for production
+- **Data Persistence**: PostgreSQL ensures data survives service restarts
 - **CORS Support**: Ready for local development and production deployment
 
 ## Local Development
@@ -34,7 +34,10 @@ Email prospecting tool with built-in lead enrichment and tracking. Join the wait
 Requirements: Python 3.8+
 
 ```bash
-# Start the API server
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the API server (uses SQLite by default)
 python backend/server.py
 
 # Server runs on http://localhost:8000
@@ -94,6 +97,22 @@ The project includes `render.yaml` for one-click deployment:
 
 - `PORT` - Server port (default: 8000)
 - `PYTHON_VERSION` - Python runtime version (default: 3.11.0)
+- `DATABASE_URL` - PostgreSQL connection string (optional, uses SQLite if not set)
+
+### Supabase Setup (Recommended for Production)
+
+1. **Create a Supabase project** at https://supabase.com
+2. **Get your connection string**:
+   - Go to Project Settings → Database
+   - Copy the "Connection string" (URI format)
+   - Use the "Transaction" pooler mode for better performance
+3. **Add to Render**:
+   - In your Render service, go to Environment
+   - Add `DATABASE_URL` with your Supabase connection string
+   - Format: `postgresql://user:password@host:port/database`
+4. **Deploy**: The backend will automatically detect and use PostgreSQL
+
+The table schema will be created automatically on first run.
 
 ## Admin Access
 
@@ -104,16 +123,35 @@ Access the admin dashboard at `/admin.html` to:
 
 ## Database
 
-SQLite database is automatically created on first run at `backend/waitlist.db`.
+The backend supports both SQLite and PostgreSQL:
 
-Schema:
+**Local Development (SQLite)**:
+- Automatically created at `backend/waitlist.db`
+- No configuration needed
+- Data resets when deploying to Render free tier
+
+**Production (PostgreSQL/Supabase)**:
+- Persistent data storage
+- Set `DATABASE_URL` environment variable
+- Recommended for deployed applications
+
+**Schema** (auto-created on first run):
 ```sql
+-- PostgreSQL
+CREATE TABLE waitlist (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- SQLite (fallback)
 CREATE TABLE waitlist (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-)
+);
 ```
 
 ## License

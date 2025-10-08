@@ -4,64 +4,122 @@
 import json
 import os
 import re
-import sqlite3
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
+# Database imports
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
+    import sqlite3
+
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "waitlist.db"
 PORT = int(os.environ.get("PORT", 8000))
+DATABASE_URL = os.environ.get("DATABASE_URL")
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
-def init_db(path: Path) -> sqlite3.Connection:
-    connection = sqlite3.connect(path, check_same_thread=False)
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS waitlist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+def init_db():
+    """Initialize database connection (PostgreSQL or SQLite)."""
+    if DATABASE_URL and HAS_POSTGRES:
+        # Use PostgreSQL (Supabase)
+        connection = psycopg2.connect(DATABASE_URL)
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS waitlist (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
         )
-        """
-    )
-    connection.commit()
-    return connection
+        connection.commit()
+        cursor.close()
+        return connection
+    else:
+        # Fallback to SQLite
+        connection = sqlite3.connect(DB_PATH, check_same_thread=False)
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS waitlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        connection.commit()
+        return connection
 
 
 def waitlist_count() -> int:
-    cursor = DB_CONN.execute("SELECT COUNT(*) FROM waitlist")
-    row = cursor.fetchone()
-    return int(row[0] if row else 0)
+    if DATABASE_URL and HAS_POSTGRES:
+        cursor = DB_CONN.cursor()
+        cursor.execute("SELECT COUNT(*) FROM waitlist")
+        row = cursor.fetchone()
+        cursor.close()
+        return int(row[0] if row else 0)
+    else:
+        cursor = DB_CONN.execute("SELECT COUNT(*) FROM waitlist")
+        row = cursor.fetchone()
+        return int(row[0] if row else 0)
 
 
 def waitlist_entries(limit: Optional[int] = None) -> List[Dict[str, Any]]:
-    sql = "SELECT name, email, created_at FROM waitlist ORDER BY datetime(created_at) DESC"
-    params: tuple[Any, ...] = ()
-    if limit is not None and limit > 0:
-        sql += " LIMIT ?"
-        params = (limit,)
-
-    cursor = DB_CONN.execute(sql, params)
-    rows = cursor.fetchall()
-    return [
-        {"name": row[0], "email": row[1], "created_at": row[2]}
-        for row in rows
-    ]
+    if DATABASE_URL and HAS_POSTGRES:
+        sql = "SELECT name, email, created_at FROM waitlist ORDER BY created_at DESC"
+        cursor = DB_CONN.cursor(cursor_factory=RealDictCursor)
+        if limit is not None and limit > 0:
+            cursor.execute(sql + " LIMIT %s", (limit,))
+        else:
+            cursor.execute(sql)
+        rows = cursor.fetchall()
+        cursor.close()
+        return [
+            {"name": row["name"], "email": row["email"], "created_at": str(row["created_at"])}
+            for row in rows
+        ]
+    else:
+        sql = "SELECT name, email, created_at FROM waitlist ORDER BY datetime(created_at) DESC"
+        params: tuple[Any, ...] = ()
+        if limit is not None and limit > 0:
+            sql += " LIMIT ?"
+            params = (limit,)
+        cursor = DB_CONN.execute(sql, params)
+        rows = cursor.fetchall()
+        return [
+            {"name": row[0], "email": row[1], "created_at": row[2]}
+            for row in rows
+        ]
 
 
 def insert_waitlist_record(payload: Dict[str, Any]) -> None:
-    with DB_CONN:
-        DB_CONN.execute(
-            "INSERT INTO waitlist (name, email) VALUES (:name, :email)",
-            payload,
+    if DATABASE_URL and HAS_POSTGRES:
+        cursor = DB_CONN.cursor()
+        cursor.execute(
+            "INSERT INTO waitlist (name, email) VALUES (%s, %s)",
+            (payload["name"], payload["email"]),
         )
+        DB_CONN.commit()
+        cursor.close()
+    else:
+        with DB_CONN:
+            DB_CONN.execute(
+                "INSERT INTO waitlist (name, email) VALUES (:name, :email)",
+                payload,
+            )
 
 
-DB_CONN = init_db(DB_PATH)
+DB_CONN = init_db()
 
 
 class WaitlistHandler(BaseHTTPRequestHandler):
@@ -171,19 +229,22 @@ class WaitlistHandler(BaseHTTPRequestHandler):
 
         try:
             insert_waitlist_record({"name": name, "email": email})
-        except sqlite3.IntegrityError:
-            self._json_response(
-                {
-                    "message": "This email is already on the waitlist.",
-                    "count": waitlist_count(),
-                },
-                status=409,
-            )
-            return
-        except sqlite3.DatabaseError as exc:
-            self.log_error("Database error: %s", exc)
-            self._json_response({"error": "We hit a snag saving your request."}, status=500)
-            return
+        except Exception as e:
+            # Handle unique constraint violations for both SQLite and PostgreSQL
+            error_msg = str(e).lower()
+            if "unique" in error_msg or "duplicate" in error_msg:
+                self._json_response(
+                    {
+                        "message": "This email is already on the waitlist.",
+                        "count": waitlist_count(),
+                    },
+                    status=409,
+                )
+                return
+            else:
+                self.log_error("Database error: %s", e)
+                self._json_response({"error": "We hit a snag saving your request."}, status=500)
+                return
 
         self._json_response(
             {

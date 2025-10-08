@@ -1,3 +1,5 @@
 # Inbox Party Waitlist API
-# No external dependencies required - uses Python standard library only
 # Python 3.8+ required
+
+# PostgreSQL adapter (for Supabase/PostgreSQL support)
+psycopg2-binary==2.9.9

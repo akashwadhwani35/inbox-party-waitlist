@@ -10,6 +10,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+      - key: DATABASE_URL
+        value: postgresql://postgres:Playstation4@@db.zpoctgwpvuyftqhqitpx.supabase.co:5432/postgres
 
   - type: web
     name: inbox-party-site
