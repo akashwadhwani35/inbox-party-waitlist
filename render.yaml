@@ -7,6 +7,10 @@ services:
     autoDeploy: true
     buildCommand: pip install -r requirements.txt
     startCommand: python backend/server.py
+    disk:
+      name: inbox-party-data
+      mountPath: /opt/render/project/src/backend
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
