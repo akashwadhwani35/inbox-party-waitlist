@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 # Database imports
 try:
     import psycopg2
+    from psycopg2 import pool
     from psycopg2.extras import RealDictCursor
     HAS_POSTGRES = True
 except ImportError:
@@ -26,24 +27,33 @@ EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def init_db():
-    """Initialize database connection (PostgreSQL or SQLite)."""
+    """Initialize database connection (PostgreSQL pool or SQLite)."""
     if DATABASE_URL and HAS_POSTGRES:
-        # Use PostgreSQL (Supabase)
-        connection = psycopg2.connect(DATABASE_URL)
-        cursor = connection.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS waitlist (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
+        # Use PostgreSQL connection pool (Supabase)
+        connection_pool = pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=DATABASE_URL
         )
-        connection.commit()
-        cursor.close()
-        return connection
+        # Create table using a connection from the pool
+        conn = connection_pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS waitlist (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.commit()
+            cursor.close()
+        finally:
+            connection_pool.putconn(conn)
+        return connection_pool
     else:
         # Fallback to SQLite
         connection = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -63,11 +73,15 @@ def init_db():
 
 def waitlist_count() -> int:
     if DATABASE_URL and HAS_POSTGRES:
-        cursor = DB_CONN.cursor()
-        cursor.execute("SELECT COUNT(*) FROM waitlist")
-        row = cursor.fetchone()
-        cursor.close()
-        return int(row[0] if row else 0)
+        conn = DB_CONN.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM waitlist")
+            row = cursor.fetchone()
+            cursor.close()
+            return int(row[0] if row else 0)
+        finally:
+            DB_CONN.putconn(conn)
     else:
         cursor = DB_CONN.execute("SELECT COUNT(*) FROM waitlist")
         row = cursor.fetchone()
@@ -76,18 +90,22 @@ def waitlist_count() -> int:
 
 def waitlist_entries(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     if DATABASE_URL and HAS_POSTGRES:
-        sql = "SELECT name, email, created_at FROM waitlist ORDER BY created_at DESC"
-        cursor = DB_CONN.cursor(cursor_factory=RealDictCursor)
-        if limit is not None and limit > 0:
-            cursor.execute(sql + " LIMIT %s", (limit,))
-        else:
-            cursor.execute(sql)
-        rows = cursor.fetchall()
-        cursor.close()
-        return [
-            {"name": row["name"], "email": row["email"], "created_at": str(row["created_at"])}
-            for row in rows
-        ]
+        conn = DB_CONN.getconn()
+        try:
+            sql = "SELECT name, email, created_at FROM waitlist ORDER BY created_at DESC"
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            if limit is not None and limit > 0:
+                cursor.execute(sql + " LIMIT %s", (limit,))
+            else:
+                cursor.execute(sql)
+            rows = cursor.fetchall()
+            cursor.close()
+            return [
+                {"name": row["name"], "email": row["email"], "created_at": str(row["created_at"])}
+                for row in rows
+            ]
+        finally:
+            DB_CONN.putconn(conn)
     else:
         sql = "SELECT name, email, created_at FROM waitlist ORDER BY datetime(created_at) DESC"
         params: tuple[Any, ...] = ()
@@ -104,15 +122,19 @@ def waitlist_entries(limit: Optional[int] = None) -> List[Dict[str, Any]]:
 
 def insert_waitlist_record(payload: Dict[str, Any]) -> None:
     if DATABASE_URL and HAS_POSTGRES:
-        cursor = DB_CONN.cursor()
+        conn = DB_CONN.getconn()
         try:
-            cursor.execute(
-                "INSERT INTO waitlist (name, email) VALUES (%s, %s)",
-                (payload["name"], payload["email"]),
-            )
-            DB_CONN.commit()
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "INSERT INTO waitlist (name, email) VALUES (%s, %s)",
+                    (payload["name"], payload["email"]),
+                )
+                conn.commit()
+            finally:
+                cursor.close()
         finally:
-            cursor.close()
+            DB_CONN.putconn(conn)
     else:
         with DB_CONN:
             DB_CONN.execute(
@@ -232,9 +254,7 @@ class WaitlistHandler(BaseHTTPRequestHandler):
         try:
             insert_waitlist_record({"name": name, "email": email})
         except Exception as e:
-            # Rollback transaction on error (PostgreSQL requires this)
-            if DATABASE_URL and HAS_POSTGRES:
-                DB_CONN.rollback()
+            # Rollback handled within insert_waitlist_record for pool connections
 
             # Handle unique constraint violations for both SQLite and PostgreSQL
             error_msg = str(e).lower()
