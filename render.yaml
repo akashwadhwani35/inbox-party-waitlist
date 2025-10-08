@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: inbox-party-api
+    env: python
+    plan: free
+    region: oregon
+    autoDeploy: true
+    startCommand: python backend/server.py
+    buildCommand: ""
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+
+staticSites:
+  - name: inbox-party-frontend
+    publishPath: frontend
+    buildCommand: ""
+    autoDeploy: true
+    routes:
+      # Update the destination host if you rename the API service.
+      - type: rewrite
+        source: /api/*
+        destination: https://inbox-party-api.onrender.com/api/*
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: max-age=3600

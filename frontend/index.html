@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Join the Inbox Party waitlist to be first in line for a calmer email workspace." />
+    <title>Inbox Party – Waitlist</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Afacad:wght@600;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="split" role="main">
+      <section class="panel panel--content">
+        <div class="panel__inner">
+          <header class="brand" role="banner">
+            <img class="brand__logo" src="assets/logo.svg" alt="Inbox Party logo" />
+          </header>
+
+          <div class="lead">
+            <h1>Email built for prospecting.</h1>
+            <p class="lead__subtitle">
+              Inbox Party finds people, enriches leads, and tracks every open—without leaving your inbox.
+            </p>
+          </div>
+
+          <form id="waitlist-form" class="waitlist" novalidate>
+            <div class="field">
+              <label class="field__label" for="name">Full name</label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                autocomplete="name"
+                placeholder="Taylor Sender"
+                required
+                minlength="2"
+              />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="email">Work email</label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="name@domain.com"
+                required
+              />
+            </div>
+
+            <button type="submit" class="btn btn--primary">Join the waitlist</button>
+
+            <p id="form-feedback" class="feedback" role="status" aria-live="polite"></p>
+            <p id="signup-count" class="signup-count" aria-live="polite"></p>
+          </form>
+
+          <footer class="legal" role="contentinfo">
+            <p>© <span id="year"></span> Inbox Party. Early access opens soon.</p>
+          </footer>
+        </div>
+      </section>
+
+      <section class="panel panel--visual" aria-label="Celebratory mailbox illustration">
+        <img src="assets/hero-mailbox.png" alt="Mailbox wearing a party hat" />
+      </section>
+    </main>
+
+    <script src="main.js" defer></script>
+  </body>
+</html>
